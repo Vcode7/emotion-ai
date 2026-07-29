@@ -45,14 +45,7 @@ venv.bak/
 !.env.example
 .secrets
 
-# Model weights, checkpoints, and large binaries
-model/checkpoint/
-*.pt
-*.pth
-*.bin
-*.pkl
-*.h5
-*.onnx
+
 
 # Uploads, local media, and databases
 backend/uploads/*
