@@ -55,10 +55,17 @@ export default function AudioRecorder({ cameraRecorderRef }) {
         }
 
         if (response) {
-          const emotion = response.emotion || response.primary_emotion || 'neutral';
-          const segments = response.segments || response.response || [];
+          const segments = response.response || response.segments || [];
           const avatarCommands = response.avatar_commands || null;
           const voiceParams = response.voice_params || null;
+
+          const emotion =
+            avatarCommands?.expression ||
+            voiceParams?.emotion ||
+            (Array.isArray(segments) && segments[0]?.emotion) ||
+            response.emotion ||
+            response.primary_emotion ||
+            'neutral';
 
           // Update the user message with transcribed text and audio url if available
           const transcribedText = response.transcript || response.transcribed_text || response.user_text;
@@ -67,11 +74,18 @@ export default function AudioRecorder({ cameraRecorderRef }) {
             audioUrl: response.audio_url || null,
           });
 
-          const contentText = Array.isArray(segments)
+          const contentText = Array.isArray(segments) && segments.length > 0
             ? segments.map((s) => s.text || s.content || '').join(' ')
             : typeof response.response === 'string'
               ? response.response
               : response.text || '';
+
+          const processedSegments = Array.isArray(segments)
+            ? segments.map((seg) => ({
+                ...seg,
+                avatarCommands: seg.avatarCommands || avatarCommands,
+              }))
+            : null;
 
           setCurrentEmotion(emotion);
           setCurrentAvatarCommands(avatarCommands);
@@ -82,7 +96,7 @@ export default function AudioRecorder({ cameraRecorderRef }) {
             content: contentText,
             emotion,
             emotionState: response.emotion_state || null,
-            segments: Array.isArray(segments) ? segments : null,
+            segments: processedSegments,
             avatarCommands,
             voiceParams,
             timestamp: Date.now(),
@@ -131,7 +145,7 @@ export default function AudioRecorder({ cameraRecorderRef }) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const isDisabled = isProcessing || !llmApiKey;
+  const isDisabled = isProcessing;
 
   return (
     <div className="flex flex-col items-center gap-4 py-6 px-4">

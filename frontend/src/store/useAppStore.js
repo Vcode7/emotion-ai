@@ -50,7 +50,7 @@ const useAppStore = create((set, get) => ({
   sessionId: uuidv4(),
 
   /* ── LLM Configuration ── */
-  llmProvider: 'openai',
+  llmProvider: 'groq',
   llmApiKey: '',
 
   /* ── UI State ── */

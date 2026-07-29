@@ -28,6 +28,34 @@ BACKEND_DIR: Path = Path(__file__).resolve().parent
 PROJECT_ROOT: Path = BACKEND_DIR.parent
 """Absolute path to the project root (emotion-ai/)."""
 
+# ── Load environment variables from .env ─────────────────────────────────────
+def _load_dotenv() -> None:
+    dotenv_path = PROJECT_ROOT / ".env"
+    if dotenv_path.exists():
+        try:
+            with open(dotenv_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip()
+                        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                            v = v[1:-1]
+                        os.environ[k] = v
+                    elif line.startswith("gsk_"):
+                        os.environ["GROQ_API_KEY"] = line
+        except Exception as e:
+            print(f"Error loading .env file: {e}")
+
+_load_dotenv()
+
+GROQ_API_KEY: str = os.environ.get("GROQ_API_KEY", "")
+OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
+GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
+
 UPLOAD_DIR: Path = BACKEND_DIR / "uploads"
 """Root directory for temporary user uploads (audio, video)."""
 

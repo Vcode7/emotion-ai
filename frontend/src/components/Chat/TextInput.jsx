@@ -79,16 +79,30 @@ export default function TextInput({ cameraRecorderRef }) {
 
       // Process response
       if (response) {
-        const emotion = response.emotion || response.primary_emotion || 'neutral';
-        const segments = response.segments || response.response || [];
+        const segments = response.response || response.segments || [];
         const avatarCommands = response.avatar_commands || null;
         const voiceParams = response.voice_params || null;
 
-        const contentText = Array.isArray(segments)
+        const emotion =
+          avatarCommands?.expression ||
+          voiceParams?.emotion ||
+          (Array.isArray(segments) && segments[0]?.emotion) ||
+          response.emotion ||
+          response.primary_emotion ||
+          'neutral';
+
+        const contentText = Array.isArray(segments) && segments.length > 0
           ? segments.map((s) => s.text || s.content || '').join(' ')
           : typeof response.response === 'string'
             ? response.response
             : response.text || '';
+
+        const processedSegments = Array.isArray(segments)
+          ? segments.map((seg) => ({
+              ...seg,
+              avatarCommands: seg.avatarCommands || avatarCommands,
+            }))
+          : null;
 
         setCurrentEmotion(emotion);
         setCurrentAvatarCommands(avatarCommands);
@@ -99,7 +113,7 @@ export default function TextInput({ cameraRecorderRef }) {
           content: contentText,
           emotion,
           emotionState: response.emotion_state || null,
-          segments: Array.isArray(segments) ? segments : null,
+          segments: processedSegments,
           avatarCommands,
           voiceParams,
           timestamp: Date.now(),
@@ -142,13 +156,13 @@ export default function TextInput({ cameraRecorderRef }) {
     [handleSubmit]
   );
 
-  const isDisabled = isProcessing || !llmApiKey;
+  const isDisabled = isProcessing;
 
-  const placeholder = !llmApiKey
-    ? 'Enter your API key in settings to begin...'
-    : isProcessing
-      ? 'Processing your message...'
-      : 'Type your message... (Shift+Enter for new line)';
+  const placeholder = isProcessing
+    ? 'Processing your message...'
+    : llmApiKey
+      ? 'Type your message... (Shift+Enter for new line)'
+      : 'Type your message... (using server .env key)';
 
   return (
     <div className="flex items-end gap-3 px-4 py-3">

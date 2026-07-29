@@ -7,7 +7,7 @@ function formatTime(timestamp) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function MessageBubble({ message }) {
+export default function MessageBubble({ message, isLatest = false }) {
   const outputModes = useAppStore((s) => s.outputModes);
   const isUser = message.role === 'user';
 
@@ -85,12 +85,14 @@ export default function MessageBubble({ message }) {
             )}
 
             {/* Voice player */}
-            {outputModes.voice && message.segments && (
-              <VoicePlayer
-                segments={message.segments}
-                voiceParams={message.voiceParams}
-              />
-            )}
+            <VoicePlayer
+              segments={message.segments}
+              content={message.content}
+              emotion={message.emotion}
+              voiceParams={message.voiceParams}
+              avatarCommands={message.avatarCommands}
+              autoPlay={isLatest && outputModes.voice}
+            />
           </div>
         )}
 

@@ -154,7 +154,7 @@ class TextChatRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=2000)
     session_id: str = Field(..., min_length=1)
     llm_provider: str = Field(..., description="openai | groq | gemini")
-    llm_api_key: str = Field(..., min_length=1)
+    llm_api_key: Optional[str] = Field(None, description="Optional API key. Falls back to server .env if not provided.")
     llm_model: Optional[str] = Field(None, description="Optional model override.")
 
 
@@ -202,7 +202,7 @@ async def chat_audio(
     audio: UploadFile = File(..., description="Audio file (WAV/MP3/WebM)."),
     session_id: str = Form(...),
     llm_provider: str = Form(...),
-    llm_api_key: str = Form(...),
+    llm_api_key: Optional[str] = Form(None),
     llm_model: Optional[str] = Form(None),
 ) -> ChatResponse:
     """
@@ -277,7 +277,7 @@ async def chat_text_video(
     text: str = Form(...),
     session_id: str = Form(...),
     llm_provider: str = Form(...),
-    llm_api_key: str = Form(...),
+    llm_api_key: Optional[str] = Form(None),
     llm_model: Optional[str] = Form(None),
 ) -> ChatResponse:
     """
@@ -339,7 +339,7 @@ async def chat_audio_video(
     video: UploadFile = File(..., description="Video file (MP4/WebM)."),
     session_id: str = Form(...),
     llm_provider: str = Form(...),
-    llm_api_key: str = Form(...),
+    llm_api_key: Optional[str] = Form(None),
     llm_model: Optional[str] = Form(None),
 ) -> ChatResponse:
     """

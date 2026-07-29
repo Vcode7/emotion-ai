@@ -244,7 +244,7 @@ class LLMService:
         emotion_state: Dict[str, float],
         llm_context: Dict[str, Any],
         provider: str,
-        api_key: str,
+        api_key: Optional[str],
         model: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         """
@@ -255,7 +255,7 @@ class LLMService:
             emotion_state:  11-D emotion dict from DMESR.
             llm_context:    Full context dict from ``EmotionMemory.to_llm_context()``.
             provider:       ``"openai"``, ``"groq"``, or ``"gemini"``.
-            api_key:        Provider API key.
+            api_key:        Provider API key (optional, falls back to env/config).
             model:          Optional model override.
 
         Returns:
@@ -264,17 +264,35 @@ class LLMService:
         # Resolve model name
         effective_model = model or _DEFAULT_MODELS.get(provider, "gpt-4o-mini")
 
+        # Resolve API key fallback
+        effective_key = api_key
+        if not effective_key:
+            from config import GROQ_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
+            if provider == "groq":
+                effective_key = GROQ_API_KEY
+            elif provider == "openai":
+                effective_key = OPENAI_API_KEY
+            elif provider == "gemini":
+                effective_key = GEMINI_API_KEY
+
+        if not effective_key:
+            logger.error("No API key provided for provider: %s", provider)
+            return [{
+                "text": f"LLM error: No API key provided for '{provider}'. Please configure it in settings or the .env file.",
+                "emotion": "neutral"
+            }]
+
         # Build prompt
         system_prompt = _build_system_prompt(emotion_state, llm_context)
 
         # Route to provider
         try:
             if provider == "openai":
-                raw = await _call_openai(system_prompt, user_text, api_key, effective_model)
+                raw = await _call_openai(system_prompt, user_text, effective_key, effective_model)
             elif provider == "groq":
-                raw = await _call_groq(system_prompt, user_text, api_key, effective_model)
+                raw = await _call_groq(system_prompt, user_text, effective_key, effective_model)
             elif provider == "gemini":
-                raw = await _call_gemini(system_prompt, user_text, api_key, effective_model)
+                raw = await _call_gemini(system_prompt, user_text, effective_key, effective_model)
             else:
                 logger.error("Unknown LLM provider: %s", provider)
                 return [{"text": f"Unknown LLM provider: {provider}", "emotion": "neutral"}]

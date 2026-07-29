@@ -73,8 +73,12 @@ export default function ChatArea() {
           </div>
         )}
 
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+        {messages.map((msg, index) => (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            isLatest={index === messages.length - 1}
+          />
         ))}
 
         {isProcessing && <LoadingIndicator />}

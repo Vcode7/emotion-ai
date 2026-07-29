@@ -1,20 +1,41 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { synthesizeSpeech } from '../../api/client';
 import useAppStore from '../../store/useAppStore';
 
 /**
  * VoicePlayer — plays TTS audio for response segments.
  * Falls back to Web Speech API when the TTS endpoint is unavailable.
+ * Dynamically updates the 3D Robot Avatar emotion during playback.
  */
-export default function VoicePlayer({ segments, voiceParams, onDone }) {
+export default function VoicePlayer({
+  segments,
+  content,
+  emotion,
+  voiceParams,
+  avatarCommands,
+  autoPlay = false,
+  onDone,
+}) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
   const audioRef = useRef(null);
   const abortRef = useRef(false);
+  const autoPlayedRef = useRef(false);
 
   const setIsSpeaking = useAppStore((s) => s.setIsSpeaking);
   const setCurrentEmotion = useAppStore((s) => s.setCurrentEmotion);
   const setCurrentAvatarCommands = useAppStore((s) => s.setCurrentAvatarCommands);
+
+  // Normalize segments array
+  const playableSegments = useMemo(() => {
+    if (Array.isArray(segments) && segments.length > 0) {
+      return segments;
+    }
+    if (content) {
+      return [{ text: content, emotion: emotion || 'neutral', avatarCommands }];
+    }
+    return [];
+  }, [segments, content, emotion, avatarCommands]);
 
   const stopPlayback = useCallback(() => {
     abortRef.current = true;
@@ -31,46 +52,46 @@ export default function VoicePlayer({ segments, voiceParams, onDone }) {
     setIsSpeaking(false);
   }, [setIsSpeaking]);
 
-  const playWithWebSpeech = useCallback((text, emotion) => {
+  const playWithWebSpeech = useCallback((text, emo) => {
     return new Promise((resolve) => {
+      if (!window.speechSynthesis) return resolve();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.95;
-      utterance.pitch = emotion === 'happy' ? 1.2 : emotion === 'sad' ? 0.8 : 1.0;
+      utterance.rate = voiceParams?.speed || 0.95;
+      utterance.pitch = voiceParams?.pitch || (emo === 'happy' ? 1.2 : emo === 'sad' ? 0.8 : 1.0);
       utterance.volume = 1.0;
-      utterance.onend = resolve;
-      utterance.onerror = resolve;
+      utterance.onend = () => resolve(true);
+      utterance.onerror = () => resolve(false);
       window.speechSynthesis.speak(utterance);
     });
-  }, []);
+  }, [voiceParams]);
 
   const playSegments = useCallback(async () => {
-    if (!segments || segments.length === 0) return;
+    if (!playableSegments || playableSegments.length === 0) return;
 
     setIsPlaying(true);
     setIsSpeaking(true);
     abortRef.current = false;
 
-    for (let i = 0; i < segments.length; i++) {
+    for (let i = 0; i < playableSegments.length; i++) {
       if (abortRef.current) break;
 
-      const segment = segments[i];
+      const segment = playableSegments[i];
       const text = segment.text || segment.content || '';
-      const emotion = segment.emotion || 'neutral';
-      const avatarCommands = segment.avatarCommands || null;
+      const segEmotion = segment.emotion || emotion || 'neutral';
+      const segAvatarCmds = segment.avatarCommands || avatarCommands || null;
 
       if (!text.trim()) continue;
 
       setCurrentSegmentIndex(i);
 
       // Sync active visual emotion/commands for this spoken segment
-      setCurrentEmotion(emotion);
-      if (avatarCommands) {
-        setCurrentAvatarCommands(avatarCommands);
+      setCurrentEmotion(segEmotion);
+      if (segAvatarCmds) {
+        setCurrentAvatarCommands(segAvatarCmds);
       }
 
       try {
-        // Try TTS endpoint first
-        const ttsResult = await synthesizeSpeech(text, emotion, voiceParams);
+        const ttsResult = await synthesizeSpeech(text, segEmotion, voiceParams);
 
         if (abortRef.current) break;
 
@@ -79,17 +100,16 @@ export default function VoicePlayer({ segments, voiceParams, onDone }) {
           audioRef.current = audio;
 
           await new Promise((resolve) => {
-            audio.onended = resolve;
-            audio.onerror = resolve;
-            audio.play().catch(resolve);
+            audio.onended = () => resolve(true);
+            audio.onerror = () => resolve(false);
+            audio.play().catch(() => resolve(false));
           });
         } else {
           throw new Error(ttsResult?.error || 'TTS unavailable');
         }
       } catch (_err) {
-        // Fallback to Web Speech API
         if (!abortRef.current && window.speechSynthesis) {
-          await playWithWebSpeech(text, emotion);
+          await playWithWebSpeech(text, segEmotion);
         }
       }
     }
@@ -101,7 +121,25 @@ export default function VoicePlayer({ segments, voiceParams, onDone }) {
       setCurrentSegmentIndex(-1);
       onDone?.();
     }
-  }, [segments, voiceParams, onDone, playWithWebSpeech, setIsSpeaking, setCurrentEmotion, setCurrentAvatarCommands]);
+  }, [
+    playableSegments,
+    emotion,
+    avatarCommands,
+    voiceParams,
+    onDone,
+    playWithWebSpeech,
+    setIsSpeaking,
+    setCurrentEmotion,
+    setCurrentAvatarCommands,
+  ]);
+
+  // Handle autoPlay on mount
+  useEffect(() => {
+    if (autoPlay && !autoPlayedRef.current) {
+      autoPlayedRef.current = true;
+      playSegments();
+    }
+  }, [autoPlay, playSegments]);
 
   useEffect(() => {
     return () => {
@@ -116,7 +154,7 @@ export default function VoicePlayer({ segments, voiceParams, onDone }) {
     };
   }, [setIsSpeaking]);
 
-  if (!segments || segments.length === 0) return null;
+  if (!playableSegments || playableSegments.length === 0) return null;
 
   return (
     <div className="flex items-center gap-2 mt-2">
@@ -131,21 +169,20 @@ export default function VoicePlayer({ segments, voiceParams, onDone }) {
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M17.95 6.05a8 8 0 010 11.9M6.5 8.8v6.4a.8.8 0 00.8.8h2.4l3.3 3.3V5.5l-3.3 3.3H7.3a.8.8 0 00-.8.8z" />
           </svg>
-          <span className="text-[11px] font-medium">Play</span>
+          <span className="text-[11px] font-medium">Listen</span>
         </button>
       ) : (
         <button
           onClick={stopPlayback}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-blue/15 border border-accent-blue/30 transition-smooth btn-hover text-accent-blue"
         >
-          {/* Animated speaker icon */}
           <div className="relative w-4 h-4">
             <svg className="w-4 h-4 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M17.95 6.05a8 8 0 010 11.9M6.5 8.8v6.4a.8.8 0 00.8.8h2.4l3.3 3.3V5.5l-3.3 3.3H7.3a.8.8 0 00-.8.8z" />
             </svg>
           </div>
           <span className="text-[11px] font-medium">
-            Playing {currentSegmentIndex + 1}/{segments.length}
+            Playing {currentSegmentIndex + 1}/{playableSegments.length}
           </span>
         </button>
       )}

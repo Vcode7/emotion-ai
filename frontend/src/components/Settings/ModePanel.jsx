@@ -122,10 +122,12 @@ export default function ModePanel() {
                 <label className="text-xs text-white/40 font-medium">API Key</label>
                 <div className="flex items-center gap-1.5">
                   <span
-                    className={`w-1.5 h-1.5 rounded-full ${llmApiKey ? 'bg-emerald-400' : 'bg-white/20'}`}
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      llmApiKey ? 'bg-emerald-400' : 'bg-sky-400'
+                    }`}
                   />
                   <span className="text-[10px] text-white/30">
-                    {llmApiKey ? 'Connected' : 'Not set'}
+                    {llmApiKey ? 'Custom Key Set' : 'Using Server .env Key'}
                   </span>
                 </div>
               </div>

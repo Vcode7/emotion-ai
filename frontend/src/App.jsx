@@ -11,6 +11,7 @@ export default function App() {
   const toggleSettingsPanel = useAppStore((s) => s.toggleSettingsPanel);
   const messages = useAppStore((s) => s.messages);
   const llmApiKey = useAppStore((s) => s.llmApiKey);
+  const llmProvider = useAppStore((s) => s.llmProvider);
 
   const showAvatar = outputModes.avatar;
 
@@ -62,10 +63,10 @@ export default function App() {
           {!llmApiKey && (
             <button
               onClick={toggleSettingsPanel}
-              className="flex items-center gap-1.5 text-xs text-amber-400/80 bg-amber-400/10 px-2.5 py-1 rounded-full hover:bg-amber-400/20 transition-smooth"
+              className="flex items-center gap-1.5 text-xs text-sky-400/80 bg-sky-400/10 hover:bg-sky-400/20 px-2.5 py-1 rounded-full transition-smooth"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              Set API Key
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+              Server Key (.env)
             </button>
           )}
 
