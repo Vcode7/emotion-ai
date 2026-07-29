@@ -1,0 +1,80 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Python cache and distribution files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environments and Secrets
+.env
+.env.*
+!.env.example
+.secrets
+
+# Model weights, checkpoints, and large binaries
+model/checkpoint/
+*.pt
+*.pth
+*.bin
+*.pkl
+*.h5
+*.onnx
+
+# Uploads, local media, and databases
+backend/uploads/*
+!backend/uploads/.gitkeep
+*.db
+*.sqlite3
+*.log
+
+# IDEs and editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
