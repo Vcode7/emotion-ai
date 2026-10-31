@@ -247,6 +247,30 @@ def test_visual_conflict_is_raised_once_then_cooled_down(make_client, llm_calls)
     assert "Do not bring it up again" in second_sys
 
 
+def test_visual_emotion_question_gets_history_and_nonverbal_reads(make_client, llm_calls):
+    client, _ = make_client(face=FakeFace({"sad": 0.8, "neutral": 0.2}))
+    frame = {"images": ("f.jpg", b"x", "image/jpeg")}
+    client.post("/chat/visual", data={**VISUAL_FORM, "user_text": "I lost my job today"}, files=frame)
+    client.post("/chat/visual", data={**VISUAL_FORM, "user_text": "can u say wt emotion i am showing now"},
+                files=frame)
+
+    system = llm_calls[1][0]["content"]
+    history = system.split("EMOTION HISTORY")[1].split("\n\n")[0]
+    assert '"I lost my job today" → sad' in history and "face sad" in history
+    assert "THIS TURN:" in system and "face sad" in system.split("THIS TURN:")[1]
+    assert "THIS TURN:" not in llm_calls[0][0]["content"]
+
+
+def test_llm_history_is_limited_to_six_messages(make_client, llm_calls):
+    client, _ = make_client()
+    body = {"session_id": "cap", "llm_provider": "groq", "llm_api_key": "test-key"}
+    for i in range(6):
+        client.post("/chat/text", json={**body, "text": f"message {i}"})
+    last = llm_calls[-1]
+    assert [m["role"] for m in last] == ["system"] + ["user", "assistant"] * 3 + ["user"]
+    assert last[1]["content"] == "message 2"
+
+
 # ── /chat/text ───────────────────────────────────────────────────────────────
 
 def test_text_chat_has_memory_and_fused_user_emotion(make_client, llm_calls):

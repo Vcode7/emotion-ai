@@ -335,3 +335,13 @@ def fuse(
         "conflict": detect_conflict(user_text, reads["text"], reads["face"], reads["audio"]),
         "dsmr_valence": None if dsmr_valence is None else round(dsmr_valence, 3),
     }
+
+
+def nonverbal_reads(fused: Dict[str, Any]) -> Dict[str, Tuple[str, float]]:
+    """Face and voice reads of a fused result, e.g. ``{"face": ("sad", 0.8), "voice": ("neutral", 0.9)}``."""
+    mods = fused.get("modalities") or {}
+    return {
+        name: (read["emotion"], read["confidence"])
+        for name, read in (("face", mods.get("face") or {}), ("voice", mods.get("audio") or {}))
+        if read.get("available")
+    }

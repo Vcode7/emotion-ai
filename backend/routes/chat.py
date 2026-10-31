@@ -45,7 +45,7 @@ from config import (
     UPLOAD_AUDIO_DIR,
     UPLOAD_VIDEO_DIR,
 )
-from emotion_fusion import dsmr_sentiment, fuse
+from emotion_fusion import dsmr_sentiment, fuse, nonverbal_reads
 from llm_service import response_voice_params
 from speech_gate import SpeechStats, analyse_speech, is_no_speech, trim_silence
 from tts_service import TTSService
@@ -333,7 +333,7 @@ async def _llm_turn(
     fused = analysis["fused"]
 
     history = convo.history_messages()          # before adding the current turn
-    convo.add_user_turn(text, fused["emotion"], fused["confidence"])
+    convo.add_user_turn(text, fused["emotion"], fused["confidence"], nonverbal_reads(fused))
     allow_conflict = convo.may_raise_conflict()
 
     result = await generate(

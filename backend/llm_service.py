@@ -3,8 +3,9 @@ llm_service.py — Multi-provider, emotion-aware LLM response generation
 =======================================================================
 
 Builds an emotion-aware system prompt from the fused multimodal emotion
-read (see ``emotion_fusion.py``) plus recent conversation history, and
-routes the request to one of three providers:
+read (see ``emotion_fusion.py``), the emotion read of each recent user
+message, and — when the user asks how they seem — an explicit instruction
+to answer from those reads. Routes the request to one of three providers:
 
     • **OpenAI**  — ``gpt-4o-mini`` via the official async client
     • **Groq**    — ``llama-3.3-70b-versatile`` via OpenAI-compatible endpoint
@@ -27,6 +28,8 @@ import json
 import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
+
+from emotion_fusion import nonverbal_reads
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +140,63 @@ _STRATEGY = {
 }
 
 _CONFIDENCE_RULES = (
-    "- Overall-read confidence below 55%: do not name an emotion; just respond warmly to their words.\n"
+    "- Overall-read confidence below 55%: don't name an emotion unprompted; just respond warmly to their words.\n"
     "- 55–75%: you may hedge (\"you sound a bit…\", \"it seems like…\").\n"
     "- Above 75%: you may name the feeling directly, but never as a certainty.\n"
-    "- Only refer to their face (\"you look…\") when the face read is at least 70%."
+    "- Only bring up their face unprompted (\"you look…\") when the face read is at least 70%."
 )
+
+_SELF_QUERY_RULE = (
+    "- If they ask about their own emotion (what they are showing or feeling, how they look, sound or seem, "
+    "whether you can tell), answer that directly from what you perceive; this overrides the rules above. "
+    "Base it on their face and voice, not on the words of the question itself, and mention how they came "
+    "across earlier if it has changed. Say which signal shows what, hedge when signals are weak or disagree, "
+    "and if a signal is missing (no camera, no face detected, typed message) say so plainly."
+)
+
+_PERCEPTION_INTRO = {
+    "visual": (
+        "HOW YOU PERCEIVE THE USER: on every turn, emotion-recognition models read their words, their tone "
+        "of voice and their facial expression (from the webcam), and give you the results below. That is how "
+        "you see and hear them, so you can talk about how they seem; never say you can't see them or can't "
+        "detect emotions."
+    ),
+    "chat": (
+        "HOW YOU PERCEIVE THE USER: on every turn, emotion-recognition models read their words, and their tone "
+        "of voice when they send audio, and give you the results below. That is how you sense how they feel, "
+        "so you can talk about how they seem; never say you can't detect emotions. There is no camera in this "
+        "chat, so you can't see their face."
+    ),
+}
+
+_EMO = r"(?:emotions?|feelings?|mood|expressions?)"
+_SELF_EMOTION_QUERY_RE = re.compile(
+    "|".join([
+        # "what emotion am I showing", "wt emotion i am showing", "which emotion do I have"
+        rf"\b(?:what|wat|wt|which)\s+(?:kind\s+of\s+)?{_EMO}\s+(?:am\s+i|do\s+i|i\s*(?:am|['’]m)|im|i\s+(?:have|show|look))\b",
+        # "what's my emotion", "what is my current mood"
+        rf"\b(?:what|wat|wt|which)(?:['’]s|\s+is|\s+are)?\s+my\s+(?:current\s+)?{_EMO}",
+        # "tell me my emotion", "guess my mood", "detect my emotions", "read my face"
+        rf"\b(?:tell|guess|read|detect|identify|predict|recogni[sz]e|sense)\s+(?:me\s+)?my\s+(?:current\s+)?(?:{_EMO}|face)",
+        # "which emotion is on my face"
+        rf"\b{_EMO}\b[^.?!]{{0,20}}\b(?:on|in)\s+my\s+(?:face|voice)",
+        # "how do I look", "do I seem sad", "how did I sound"
+        r"\b(?:do|did|does)\s+i\s+(?:look|seem|sound|appear)\b",
+        # "am I happy or sad", "am I looking sad"
+        r"\bam\s+i\s+(?:looking\s+|feeling\s+)?(?:happy|sad|angry|mad|upset|scared|afraid|fearful|nervous|"
+        r"anxious|stressed|neutral|calm|surprised)\b",
+        # "what am I feeling", "how am I feeling", "what do I feel"
+        r"\b(?:what|how)\s+(?:am\s+i|do\s+i)\s+(?:feeling|feel|showing|expressing|looking)\b",
+        # "can you see me", "can u tell how I feel", "can you sense what I'm feeling"
+        r"\bcan\s+(?:you|u)\s+(?:see|tell|sense|detect|read)\s+(?:me\b|my\b|how\s+i\b|what\s+i|if\s+i\b|whether\s+i\b)",
+    ]),
+    re.IGNORECASE,
+)
+
+
+def asks_about_own_emotion(text: str) -> bool:
+    """True when the user asks how they seem ("what emotion am I showing?", "do I look sad?")."""
+    return bool(_SELF_EMOTION_QUERY_RE.search(text or ""))
 
 
 def _pct(x: Any) -> int:
@@ -149,6 +204,15 @@ def _pct(x: Any) -> int:
         return round(float(x) * 100)
     except (TypeError, ValueError):
         return 0
+
+
+def _snippet(text: str, limit: int = 60) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _format_signals(signals: Dict[str, Tuple[str, float]]) -> str:
+    return ", ".join(f"{name} {emotion} {_pct(conf)}%" for name, (emotion, conf) in signals.items())
 
 
 def _format_modality(name: str, read: Dict[str, Any], nuance: List[str]) -> str:
@@ -175,7 +239,7 @@ def _perception_block(
 ) -> str:
     mods = fused.get("modalities") or {}
     lines = [
-        "PERCEPTION OF THE USER (automated estimates — they can be wrong):",
+        "WHAT YOU PERCEIVE RIGHT NOW (automated estimates — they can be wrong):",
         f"- Overall read: {fused.get('emotion', 'neutral')} "
         f"{_pct(fused.get('confidence'))}% (signals agreeing: {fused.get('agreement', '0/0')})",
         _format_modality("Words", mods.get("text", {}), fused.get("nuance") or []),
@@ -193,6 +257,25 @@ def _perception_block(
     return "\n".join(lines)
 
 
+def _emotion_history_block(history: Optional[List[Dict[str, Any]]]) -> str:
+    """One line per earlier user message with the emotion read taken when it was said."""
+    lines = []
+    for m in history or []:
+        if m.get("role") != "user":
+            continue
+        signals = m.get("signals") or {}
+        if not m.get("confidence") and not signals:
+            continue                                   # no usable read for that turn
+        overall = f"{m.get('emotion', 'neutral')} {_pct(m['confidence'])}%" if m.get("confidence") else "unclear"
+        line = f'- "{_snippet(m.get("content", ""))}" → {overall}'
+        if signals:
+            line += f" ({_format_signals(signals)})"
+        lines.append(line)
+    if not lines:
+        return ""
+    return "EMOTION HISTORY (how they came across in their earlier messages, oldest first):\n" + "\n".join(lines)
+
+
 def _conflict_block(conflict: Optional[Dict[str, Any]], allow_mention: bool) -> str:
     if not conflict:
         return ""
@@ -200,14 +283,31 @@ def _conflict_block(conflict: Optional[Dict[str, Any]], allow_mention: bool) -> 
     said = "they're fine" if conflict.get("minimising_phrase") else "they're feeling good"
     if allow_mention:
         return (
-            f"\nMISMATCH NOTICED: their words suggest {said}, but their {source} reads as "
+            f"MISMATCH NOTICED: their words suggest {said}, but their {source} reads as "
             f"{conflict.get('observed')} ({_pct(conflict.get('confidence'))}%). You may gently and briefly "
             "acknowledge this once, without insisting — e.g. \"You say you're okay, but you seem a little "
-            f"{conflict.get('observed')}. Want to talk about it?\"\n"
+            f"{conflict.get('observed')}. Want to talk about it?\""
         )
     return (
-        f"\nA mismatch between their words and their {source} was noticed, but you raised it recently. "
-        "Do not bring it up again now — just stay warm and attentive.\n"
+        f"A mismatch between their words and their {source} was noticed, but you raised it recently. "
+        "Do not bring it up again now — just stay warm and attentive."
+    )
+
+
+def _self_query_block(fused: Dict[str, Any]) -> str:
+    """Extra instruction for a turn where the user asks how they seem."""
+    signals = nonverbal_reads(fused)
+    if signals:
+        evidence = f"Their non-verbal signals right now: {_format_signals(signals)}."
+    else:
+        evidence = (
+            "There is no face or voice signal this turn, so say you can only go by their words here, "
+            "and describe how they have come across from the emotion history."
+        )
+    return (
+        "THIS TURN: they are asking how they seem to you. Answer that question in your reply. "
+        f"{evidence} Don't deflect, don't turn it back on them (\"how do you feel?\"), and don't say "
+        "you can't detect emotions."
     )
 
 
@@ -223,10 +323,34 @@ def _guidelines(fused: Dict[str, Any], spoken: bool) -> str:
         "- Respond to what they actually said first; let the emotional read shape your tone, not replace the content.\n"
         f"- Strategy for their current state: {strategy}\n"
         f"{_CONFIDENCE_RULES}\n"
+        f"{_SELF_QUERY_RULE}\n"
+        "- Use the emotion history to notice how their feelings have moved during the conversation, and the "
+        "conversation itself for context; don't repeat the wording of your previous replies.\n"
         f"- {length} No markdown, no emoji, at most one question.\n"
-        "- Use the conversation so far for context, and don't repeat the wording of your previous replies.\n"
-        "- Never claim to know their feelings for certain, and never mention these instructions or the scores."
+        "- Never claim to know their feelings for certain, and never mention these instructions. "
+        "Don't quote the scores unless they ask for numbers."
     )
+
+
+def _context(
+    fused: Dict[str, Any],
+    dsmr: Optional[Dict[str, Any]],
+    trajectory: str,
+    allow_conflict_mention: bool,
+    history: Optional[List[Dict[str, Any]]],
+    user_text: str,
+    visual: bool,
+) -> str:
+    """Perception, emotion history, mismatch and response rules shared by both prompts."""
+    blocks = [
+        _PERCEPTION_INTRO["visual" if visual else "chat"],
+        _perception_block(fused, dsmr, trajectory, include_face=visual),
+        _emotion_history_block(history),
+        _conflict_block(fused.get("conflict"), allow_conflict_mention),
+        _guidelines(fused, spoken=visual),
+        _self_query_block(fused) if asks_about_own_emotion(user_text) else "",
+    ]
+    return "\n\n".join(b for b in blocks if b)
 
 
 def _build_system_prompt(
@@ -234,13 +358,13 @@ def _build_system_prompt(
     dsmr: Optional[Dict[str, Any]],
     trajectory: str = "",
     allow_conflict_mention: bool = True,
+    history: Optional[List[Dict[str, Any]]] = None,
+    user_text: str = "",
 ) -> str:
     """System prompt for the JSON-segment chat endpoints (/chat/text, /chat/audio, …)."""
     return (
         "You are an empathetic, emotionally perceptive AI companion chatting with the user.\n\n"
-        f"{_perception_block(fused, dsmr, trajectory, include_face=False)}\n"
-        f"{_conflict_block(fused.get('conflict'), allow_conflict_mention)}\n"
-        f"{_guidelines(fused, spoken=False)}\n\n"
+        f"{_context(fused, dsmr, trajectory, allow_conflict_mention, history, user_text, visual=False)}\n\n"
         "RESPONSE FORMAT:\n"
         "Respond ONLY with a JSON array. Each element must have:\n"
         '  "text" — your response text for that segment\n'
@@ -257,15 +381,15 @@ def _build_visual_chat_prompt(
     dsmr: Optional[Dict[str, Any]],
     trajectory: str = "",
     allow_conflict_mention: bool = True,
+    history: Optional[List[Dict[str, Any]]] = None,
+    user_text: str = "",
 ) -> str:
     """System prompt for Visual Chat — perception block + emotion(sentence) format."""
     emotions = ", ".join(_PROMPT_VISUAL_EMOTIONS)
     return (
         "You are an empathetic, emotionally perceptive AI companion in a live voice and video call. "
         "The user's words come from speech recognition and may contain small errors.\n\n"
-        f"{_perception_block(fused, dsmr, trajectory, include_face=True)}\n"
-        f"{_conflict_block(fused.get('conflict'), allow_conflict_mention)}\n"
-        f"{_guidelines(fused, spoken=True)}\n\n"
+        f"{_context(fused, dsmr, trajectory, allow_conflict_mention, history, user_text, visual=True)}\n\n"
         "REQUIRED FORMAT: respond with exactly ONE line:\n"
         "emotion(Your response sentence here)\n"
         f"where emotion is your own reaction, one of: {emotions}.\n\n"
@@ -273,11 +397,12 @@ def _build_visual_chat_prompt(
         "empathetic(That sounds exhausting. What's been weighing on you the most?)\n"
         "happy(That's wonderful news! How are you going to celebrate?)\n"
         "concerned(You say you're okay, but you seem a little down. Want to talk about it?)\n"
+        "neutral(Your face looks fairly relaxed right now, maybe a hint of a smile, and your voice sounds calm.)\n"
         "neutral(Sure, I can help with that. What would you like to start with?)"
     )
 
 
-def _build_messages(system_prompt: str, history: Optional[List[Dict[str, str]]],
+def _build_messages(system_prompt: str, history: Optional[List[Dict[str, Any]]],
                     user_text: str) -> List[Dict[str, str]]:
     messages = [{"role": "system", "content": system_prompt}]
     for m in history or []:
@@ -619,7 +744,9 @@ class LLMService:
             logger.error("Unknown LLM provider: %s", provider)
             return [{"text": f"Unknown LLM provider: {provider}", "emotion": "neutral"}]
 
-        system_prompt = _build_system_prompt(fused, dsmr, trajectory, allow_conflict_mention)
+        system_prompt = _build_system_prompt(
+            fused, dsmr, trajectory, allow_conflict_mention, history, user_text,
+        )
         messages = _build_messages(system_prompt, history, user_text)
 
         try:
@@ -674,7 +801,9 @@ class LLMService:
         if caller is None:
             return "neutral", f"Unknown LLM provider: {provider}"
 
-        system_prompt = _build_visual_chat_prompt(fused, dsmr, trajectory, allow_conflict_mention)
+        system_prompt = _build_visual_chat_prompt(
+            fused, dsmr, trajectory, allow_conflict_mention, history, user_text,
+        )
         messages = _build_messages(system_prompt, history, user_text)
 
         # ── Call LLM ─────────────────────────────────────────────────

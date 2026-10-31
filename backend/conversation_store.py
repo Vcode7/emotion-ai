@@ -4,6 +4,7 @@ conversation_store.py — Per-session conversation memory and emotion state
 
 Keeps, per ``session_id``:
     • the last N conversation turns (user + assistant) for LLM context,
+      each user turn with the emotion read taken when it was said,
     • an EMA baseline of the user's facial-expression distribution
       (used to calibrate away a "sad-looking" resting face),
     • an EMA of the fused user emotion and the recent label trajectory,
@@ -20,7 +21,7 @@ import threading
 import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 from emotion_fusion import CORE_LABELS
 
@@ -29,6 +30,17 @@ FUSED_EMA_ALPHA = 0.5
 CONFLICT_COOLDOWN_TURNS = 3
 LOW_CONFIDENCE = 0.4
 
+HISTORY_MESSAGES = 6
+"""Past messages sent to the LLM each turn (3 exchanges). With the clip below,
+a request stays around 1–2.5K tokens — inside Groq's free-tier per-minute limits."""
+
+HISTORY_MESSAGE_MAX_CHARS = 400
+"""Past messages longer than this (~100 tokens) are clipped before reaching the LLM."""
+
+
+def _clip(text: str, limit: int = HISTORY_MESSAGE_MAX_CHARS) -> str:
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
 
 @dataclass
 class Turn:
@@ -36,12 +48,13 @@ class Turn:
     text: str
     emotion: str = "neutral"
     confidence: float = 0.0
+    signals: Dict[str, Tuple[str, float]] = field(default_factory=dict)   # {"face": ("sad", 0.8), …}
     timestamp: float = field(default_factory=time.time)
 
 
 @dataclass
 class SessionState:
-    max_turns: int = 12
+    max_turns: int = HISTORY_MESSAGES
     turns: Deque[Turn] = field(default_factory=deque)
     face_baseline: Optional[Dict[str, float]] = None
     face_observations: int = 0
@@ -56,22 +69,33 @@ class SessionState:
 
     # ── Conversation history ─────────────────────────────────────────────
 
-    def add_user_turn(self, text: str, emotion: str, confidence: float) -> None:
-        self.turns.append(Turn("user", text, emotion, confidence))
+    def add_user_turn(self, text: str, emotion: str, confidence: float,
+                      signals: Optional[Dict[str, Tuple[str, float]]] = None) -> None:
+        """*signals* are the non-verbal reads of this turn (``emotion_fusion.nonverbal_reads``)."""
+        self.turns.append(Turn("user", text, emotion, confidence, dict(signals or {})))
         self.user_emotions.append((emotion, confidence))
         self.user_turn_count += 1
 
     def add_assistant_turn(self, text: str, emotion: str) -> None:
         self.turns.append(Turn("assistant", text, emotion))
 
-    def history_messages(self, last_n: int = 8) -> List[Dict[str, str]]:
-        """Recent turns as chat messages (oldest first), excluding the current user turn."""
-        recent = list(self.turns)[-last_n:]
-        return [
-            {"role": t.role, "content": t.text}
-            for t in recent
-            if t.text
-        ]
+    def history_messages(self, last_n: int = HISTORY_MESSAGES) -> List[Dict[str, Any]]:
+        """
+        Recent turns as chat messages (oldest first), excluding the current user turn.
+
+        User messages also carry the emotion read taken when they were said
+        (``emotion``, ``confidence``, ``signals``) for the prompt's emotion history.
+        """
+        recent = [t for t in self.turns if t.text][-last_n:]
+        while recent and recent[0].role != "user":    # history should open with the user
+            recent.pop(0)
+        messages: List[Dict[str, Any]] = []
+        for t in recent:
+            msg: Dict[str, Any] = {"role": t.role, "content": _clip(t.text)}
+            if t.role == "user":
+                msg.update(emotion=t.emotion, confidence=t.confidence, signals=dict(t.signals))
+            messages.append(msg)
+        return messages
 
     # ── Emotion state ────────────────────────────────────────────────────
 
@@ -139,7 +163,8 @@ class SessionState:
 class ConversationStore:
     """Thread-safe LRU + TTL store of :class:`SessionState` keyed by session id."""
 
-    def __init__(self, max_sessions: int = 200, ttl_seconds: int = 3600, max_turns: int = 12) -> None:
+    def __init__(self, max_sessions: int = 200, ttl_seconds: int = 3600,
+                 max_turns: int = HISTORY_MESSAGES) -> None:
         self.max_sessions = max_sessions
         self.ttl_seconds = ttl_seconds
         self.max_turns = max_turns

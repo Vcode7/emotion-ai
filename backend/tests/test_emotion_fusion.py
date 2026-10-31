@@ -1,7 +1,9 @@
 import pytest
 
-from conversation_store import ConversationStore
-from emotion_fusion import calibrate_face, dsmr_sentiment, fuse, sentiment_band, to_core, _GOEMOTIONS_TO_CORE
+from conversation_store import HISTORY_MESSAGE_MAX_CHARS, HISTORY_MESSAGES, ConversationStore
+from emotion_fusion import (
+    calibrate_face, dsmr_sentiment, fuse, nonverbal_reads, sentiment_band, to_core, _GOEMOTIONS_TO_CORE,
+)
 
 
 def face(probs, detected=True, gated=False):
@@ -208,3 +210,34 @@ def test_store_lru_and_history():
     store.get("b")
     store.get("c")
     assert len(store) == 2 and "a" not in store._sessions
+
+
+def test_history_is_capped_clipped_and_carries_emotion_reads():
+    state = ConversationStore().get("h")
+    state.add_assistant_turn("orphan reply", "neutral")
+    for i in range(5):
+        state.add_user_turn(f"u{i} " + "x" * 600, "sad", 0.7, {"face": ("sad", 0.8)})
+        state.add_assistant_turn(f"a{i}", "empathetic")
+    history = state.history_messages()
+    assert len(history) == HISTORY_MESSAGES
+    assert history[0]["role"] == "user" and history[0]["content"].startswith("u2 ")
+    assert len(history[0]["content"]) == HISTORY_MESSAGE_MAX_CHARS
+    assert history[0]["signals"] == {"face": ("sad", 0.8)} and history[0]["emotion"] == "sad"
+    assert "signals" not in history[1]
+
+
+def test_history_never_opens_with_an_assistant_message():
+    state = ConversationStore().get("o")
+    state.add_user_turn("u0", "neutral", 0.5)
+    state.add_assistant_turn("a0", "neutral")
+    state.add_user_turn("u1", "neutral", 0.5)           # LLM failed: no assistant turn stored
+    state.add_assistant_turn("a1", "neutral")
+    assert [m["content"] for m in state.history_messages(last_n=3)] == ["u1", "a1"]
+
+
+def test_nonverbal_reads_skip_missing_signals():
+    fused = fuse(text={"available": True, "probabilities": {"neutral": 1.0}},
+                 face={"available": True, "face_detected": False})
+    assert nonverbal_reads(fused) == {}
+    fused = fuse(audio={"available": True, "probabilities": {"ang": 0.9, "neu": 0.1}})
+    assert nonverbal_reads(fused) == {"voice": ("angry", 0.9)}

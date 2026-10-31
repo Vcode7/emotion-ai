@@ -1,8 +1,12 @@
+import pytest
+
 from llm_service import (
     _build_messages,
+    _build_system_prompt,
     _build_visual_chat_prompt,
     _parse_emotion_sentence,
     _parse_llm_response,
+    asks_about_own_emotion,
     response_voice_params,
 )
 from emotion_fusion import fuse
@@ -123,6 +127,71 @@ def test_visual_prompt_mentions_conflict_only_when_allowed():
     assert "MISMATCH NOTICED" in allowed
     assert "Do not bring it up again" in blocked
     assert "listening" not in allowed.split("one of:")[-1].split("\n")[0]
+
+
+@pytest.mark.parametrize("text", [
+    "can i u say wt emotion i am showing now",      # real (garbled) request that went unanswered
+    "What emotion am I showing?",
+    "do I look sad",
+    "am I happy or sad?",
+    "guess my mood",
+    "Can you tell what I'm feeling?",
+    "which emotion is on my face",
+])
+def test_detects_questions_about_own_emotion(text):
+    assert asks_about_own_emotion(text)
+
+
+@pytest.mark.parametrize("text", [
+    "My mood is terrible today",
+    "How do I tell my boss about my feelings?",
+    "My feelings are hurt because of you",
+    "how are you?",
+    "I'm fine",
+])
+def test_ordinary_messages_are_not_emotion_questions(text):
+    assert not asks_about_own_emotion(text)
+
+
+def _visual_fused(question):
+    return fuse(
+        text={"available": True, "probabilities": {"neutral": 0.95, "curiosity": 0.05}},
+        audio={"available": True, "probabilities": {"neu": 0.85, "sad": 0.15}},
+        face={"available": True, "face_detected": True, "probabilities": {"happy": 0.72, "neutral": 0.28}},
+        user_text=question,
+    )
+
+
+def test_emotion_question_points_the_model_at_face_and_voice():
+    question = "what emotion am I showing now?"
+    fused = _visual_fused(question)
+    assert fused["emotion"] == "neutral"        # the question's words dominate the overall read
+    prompt = _build_visual_chat_prompt(fused, None, "", user_text=question)
+    this_turn = prompt.split("THIS TURN:")[1].split("\n")[0]
+    assert "face happy 72%" in this_turn and "voice neutral 85%" in this_turn
+    assert "THIS TURN:" not in _build_visual_chat_prompt(fused, None, "", user_text="I had a long day")
+
+
+def test_emotion_question_in_text_chat_admits_words_only():
+    question = "can you tell what I'm feeling?"
+    fused = fuse(text={"available": True, "probabilities": {"neutral": 0.9, "curiosity": 0.1}}, user_text=question)
+    prompt = _build_system_prompt(fused, None, "", user_text=question)
+    assert "only go by their words" in prompt
+    assert "can't see their face" in prompt
+
+
+def test_prompt_lists_emotion_history_of_earlier_user_messages():
+    history = [
+        {"role": "user", "content": "I lost my job today", "emotion": "sad", "confidence": 0.72,
+         "signals": {"face": ("sad", 0.8), "voice": ("neutral", 0.9)}},
+        {"role": "assistant", "content": "I'm so sorry."},
+        {"role": "user", "content": "whatever", "emotion": "neutral", "confidence": 0.0, "signals": {}},
+    ]
+    prompt = _build_visual_chat_prompt(_visual_fused("hi"), None, "", history=history, user_text="hi")
+    block = prompt.split("EMOTION HISTORY")[1].split("\n\n")[0]
+    assert '"I lost my job today" → sad 72% (face sad 80%, voice neutral 90%)' in block
+    assert "whatever" not in block                 # no usable read for that turn
+    assert "I'm so sorry" not in block             # assistant turns carry no user read
 
 
 def test_response_voice_params_follow_reply_emotion():
