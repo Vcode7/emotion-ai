@@ -683,18 +683,35 @@ def generate_voice_params(emotion_state: Dict[str, float]) -> Dict:
 #  Stateful Inference Wrapper (Extracts features and drives model)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def load_frozen_bert(device: str = "cpu") -> Tuple[BertTokenizer, BertModel]:
+    """Load the frozen BERT tokenizer/encoder used for live text feature extraction."""
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    bert = BertModel.from_pretrained("bert-base-uncased").to(device).eval()
+    for p in bert.parameters():
+        p.requires_grad = False
+    return tokenizer, bert
+
+
 class DMESRInference:
-    def __init__(self, model: DMESR, cfg: DMESRConfig, device: str = "cpu"):
+    def __init__(
+        self,
+        model: DMESR,
+        cfg: DMESRConfig,
+        device: str = "cpu",
+        tokenizer: Optional[BertTokenizer] = None,
+        bert: Optional[BertModel] = None,
+    ):
         self.model = model.to(device).eval()
         self.cfg = cfg
         self.device = device
         self.memory = EmotionMemory(cfg)
 
-        # Instantiate frozen BERT model for live text feature extraction
-        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-        self.bert = BertModel.from_pretrained("bert-base-uncased").to(self.device).eval()
-        for p in self.bert.parameters():
-            p.requires_grad = False
+        # Frozen BERT for live text feature extraction. Pass a shared instance
+        # when creating many sessions — loading it per session costs ~440 MB each.
+        if tokenizer is None or bert is None:
+            tokenizer, bert = load_frozen_bert(self.device)
+        self.tokenizer = tokenizer
+        self.bert = bert
 
         self.state_head = model.state_head
 

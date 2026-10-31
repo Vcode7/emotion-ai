@@ -49,28 +49,61 @@ except ImportError:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Emotion → edge-tts voice mapping
+#  Emotion → edge-tts voice mapping  (FEMALE ONLY — Avatars Sky & Sky2 are female)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Edge-tts uses Microsoft voices identified by a ShortName.
-# We pick voices that sound appropriate for each emotional register.
-_EDGE_VOICE_MAP = {
-    "compassion":       "en-US-JennyNeural",
-    "warm_positive":    "en-US-AriaNeural",
-    "calm_reassuring":  "en-US-JennyNeural",
-    "neutral":          "en-US-GuyNeural",
-    "happy":            "en-US-AriaNeural",
-    "sad":              "en-US-JennyNeural",
-    "angry":            "en-US-GuyNeural",
-    "surprised":        "en-US-AriaNeural",
-    "concerned":        "en-US-JennyNeural",
-    "encouraging":      "en-US-AriaNeural",
-    "supportive":       "en-US-JennyNeural",
-    "thinking":         "en-US-GuyNeural",
-    "fearful":          "en-US-JennyNeural",
+# All voices are female Microsoft Edge neural voices.
+# en-US-JennyNeural  — warm, natural, balanced conversational female voice (neutral, thinking, concerned, supportive)
+# en-US-EmmaNeural   — bright, cheerful, lively, upbeat female voice (happy, warm_positive, encouraging)
+# en-US-AvaNeural    — gentle, soft, comforting, empathetic female voice (compassion, calm_reassuring, empathetic, sad)
+# en-US-AriaNeural   — expressive, dynamic, emotionally rich female voice (surprised, angry, fearful, fear, disgust)
+
+_FEMALE_EDGE_VOICES = {
+    "en-US-JennyNeural",
+    "en-US-AvaNeural",
+    "en-US-EmmaNeural",
+    "en-US-AriaNeural",
+    "en-US-MichelleNeural",
+    "en-US-AnaNeural",
 }
 
-_DEFAULT_EDGE_VOICE = "en-US-JennyNeural"
+_EDGE_VOICE_MAP = {
+    # Warm / Gentle / Empathetic female voices (AvaNeural)
+    "compassion":       "en-US-AvaNeural",
+    "calm_reassuring":  "en-US-AvaNeural",
+    "empathetic":       "en-US-AvaNeural",
+    "sad":              "en-US-AvaNeural",
+    "sadness":          "en-US-AvaNeural",
+    "relief":           "en-US-AvaNeural",
+    "calm":             "en-US-AvaNeural",
+
+    # Bright / Cheerful / Upbeat female voices (EmmaNeural)
+    "happy":            "en-US-EmmaNeural",
+    "happiness":        "en-US-EmmaNeural",
+    "warm_positive":    "en-US-EmmaNeural",
+    "encouraging":      "en-US-EmmaNeural",
+    "joy":              "en-US-EmmaNeural",
+    "excited":          "en-US-EmmaNeural",
+
+    # Expressive / Dynamic / Intense female voices (AriaNeural)
+    "surprised":        "en-US-AriaNeural",
+    "surprise":         "en-US-AriaNeural",
+    "angry":            "en-US-AriaNeural",
+    "anger":            "en-US-AriaNeural",
+    "fearful":          "en-US-AriaNeural",
+    "fear":             "en-US-AriaNeural",
+    "disgust":          "en-US-AriaNeural",
+    "contempt":         "en-US-AriaNeural",
+    "anxious":          "en-US-AriaNeural",
+
+    # Natural / Balanced / Thoughtful female voices (JennyNeural)
+    "neutral":          "en-US-JennyNeural",
+    "thinking":         "en-US-JennyNeural",
+    "concerned":        "en-US-JennyNeural",
+    "supportive":       "en-US-JennyNeural",
+}
+
+_DEFAULT_EDGE_VOICE = "en-US-JennyNeural"  # female fallback for any unknown emotion
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -83,7 +116,7 @@ class TTSService:
 
     Priority:
         1. StyleTTS2 (offline, high quality)
-        2. edge-tts  (online, Microsoft Edge voices)
+        2. edge-tts  (online, Microsoft Edge voices — FEMALE ONLY)
         3. None      (frontend falls back to Web Speech API)
 
     Attributes:
@@ -114,7 +147,7 @@ class TTSService:
         if _EDGE_TTS_AVAILABLE:
             self.available = True
             self.backend = "edge-tts"
-            logger.info("TTSService initialised with edge-tts backend.")
+            logger.info("TTSService initialised with edge-tts backend (FEMALE voices only).")
             return
 
         # ── No backend ───────────────────────────────────────────────────
@@ -143,6 +176,9 @@ class TTSService:
         Returns:
             The filename (basename) of the generated audio, or ``None``
             if TTS is unavailable.
+
+        Note:
+            Avatars (Sky & Sky2) are FEMALE — all voices are strictly female regardless of emotion.
         """
         if not self.available:
             return None
@@ -151,10 +187,18 @@ class TTSService:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        emotion_lower = (emotion or "neutral").lower().strip()
+        voice_selected = _EDGE_VOICE_MAP.get(emotion_lower, _DEFAULT_EDGE_VOICE)
+        if voice_selected not in _FEMALE_EDGE_VOICES:
+            voice_selected = _DEFAULT_EDGE_VOICE
+
+        logger.info("TTS synthesize: emotion=%r → voice=%s (female)",
+                    emotion_lower, voice_selected)
+
         if self.backend == "styletts2":
-            return await self._synthesize_styletts2(text, emotion, vp, output_dir)
+            return await self._synthesize_styletts2(text, emotion_lower, vp, output_dir)
         elif self.backend == "edge-tts":
-            return await self._synthesize_edge_tts(text, emotion, vp, output_dir)
+            return await self._synthesize_edge_tts(text, emotion_lower, vp, output_dir)
 
         return None
 
@@ -207,12 +251,16 @@ class TTSService:
         voice_params: dict,
         output_dir: Path,
     ) -> Optional[str]:
-        """Generate speech using Microsoft Edge TTS."""
+        """Generate speech using Microsoft Edge TTS (FEMALE voices only)."""
         try:
             filename = f"{uuid.uuid4().hex}.mp3"
             filepath = output_dir / filename
 
+            # Always pick a FEMALE voice — models are female avatars (Sky & Sky2)
             voice = _EDGE_VOICE_MAP.get(emotion, _DEFAULT_EDGE_VOICE)
+            if voice not in _FEMALE_EDGE_VOICES:
+                voice = _DEFAULT_EDGE_VOICE
+            logger.info("edge-tts: emotion=%r → voice=%s (female)", emotion, voice)
 
             # Build rate/pitch strings from voice_params
             speed = voice_params.get("speed", 1.0)
@@ -222,9 +270,9 @@ class TTSService:
             rate_pct = int((speed - 1.0) * 100)
             rate_str = f"{rate_pct:+d}%"
 
-            # edge-tts pitch: percentage offset, e.g. "+20%", "-10%"
-            pitch_pct = int((pitch - 1.0) * 100)
-            pitch_str = f"{pitch_pct:+d}%"
+            # edge-tts pitch: offset in Hz, e.g. "+5Hz", "-5Hz" (edge-tts requires r"^[+-]\d+Hz$")
+            pitch_hz = int((pitch - 1.0) * 50)
+            pitch_str = f"{pitch_hz:+d}Hz"
 
             communicate = edge_tts.Communicate(  # type: ignore[attr-defined]
                 text,

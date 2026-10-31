@@ -56,6 +56,31 @@ class WhisperService:
     #  Public API
     # ------------------------------------------------------------------
 
+    def transcribe_bytes(self, audio_bytes: bytes, filename: str = "recording.webm") -> Dict[str, Any]:
+        """
+        Transcribe raw audio bytes by saving them to a temporary file, then
+        transcribing and cleaning up.
+
+        Args:
+            audio_bytes: Raw audio data (WebM, WAV, MP3, etc.).
+            filename:    Hint used for the temporary filename extension.
+
+        Returns:
+            Same schema as ``transcribe()``: ``{text, segments}``.
+        """
+        import tempfile, os, pathlib
+        ext = pathlib.Path(filename).suffix or ".webm"
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+        try:
+            return self.transcribe(tmp_path)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
     def transcribe(self, audio_path: str) -> Dict[str, Any]:
         """
         Transcribe an audio file and return the text plus segment-level
@@ -84,13 +109,19 @@ class WhisperService:
                 audio_path,
                 language="en",       # force English for speed; remove to auto-detect
                 fp16=(DEVICE == "cuda"),
+                # Utterances are short and independent; conditioning on previous
+                # text makes Whisper loop on hallucinations.
+                condition_on_previous_text=False,
             )
 
+            # no_speech_prob / avg_logprob feed the speech gate (speech_gate.py).
             segments: List[Dict[str, Any]] = [
                 {
                     "start": float(seg["start"]),
                     "end":   float(seg["end"]),
                     "text":  seg["text"].strip(),
+                    "no_speech_prob": float(seg.get("no_speech_prob", 0.0)),
+                    "avg_logprob":    float(seg.get("avg_logprob", 0.0)),
                 }
                 for seg in result.get("segments", [])
             ]

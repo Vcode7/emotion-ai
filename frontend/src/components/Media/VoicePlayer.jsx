@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { synthesizeSpeech } from '../../api/client';
 import useAppStore from '../../store/useAppStore';
+import { getFemaleVoice } from '../../utils/speech';
+import { normalizeEmotion } from '../../utils/emotionLabels';
 
 /**
  * VoicePlayer — plays TTS audio for response segments.
@@ -56,8 +58,14 @@ export default function VoicePlayer({
     return new Promise((resolve) => {
       if (!window.speechSynthesis) return resolve();
       const utterance = new SpeechSynthesisUtterance(text);
+      const femaleVoice = getFemaleVoice();
+      if (femaleVoice) {
+        utterance.voice = femaleVoice;
+      }
       utterance.rate = voiceParams?.speed || 0.95;
-      utterance.pitch = voiceParams?.pitch || (emo === 'happy' ? 1.2 : emo === 'sad' ? 0.8 : 1.0);
+      const norm = normalizeEmotion(emo);
+      const basePitch = voiceParams?.pitch || (norm === 'happy' ? 1.2 : norm === 'sad' ? 0.95 : 1.05);
+      utterance.pitch = Math.max(1.0, basePitch);
       utterance.volume = 1.0;
       utterance.onend = () => resolve(true);
       utterance.onerror = () => resolve(false);

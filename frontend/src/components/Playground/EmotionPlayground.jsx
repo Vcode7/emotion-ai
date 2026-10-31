@@ -4,6 +4,7 @@ import { OrbitControls } from '@react-three/drei';
 import RobotAvatar from '../Avatar/RobotAvatar';
 import { synthesizeSpeech } from '../../api/client';
 import useAppStore from '../../store/useAppStore';
+import { getFemaleVoice } from '../../utils/speech';
 
 const PRESET_PHRASES = [
   "Hello there! I am your conversational assistant, ready to assist you in any emotional register.",
@@ -43,7 +44,7 @@ const EMOTIONS = [
     activeBgClass: 'bg-accent-blue/10 border-accent-blue/50 text-accent-blue glow-blue',
     accentColor: '#3b82f6',
     description: 'Slow, low-pitched voice. Drooped eyes and mouth curve.',
-    voiceParams: { speed: 0.75, pitch: 0.75 }
+    voiceParams: { speed: 0.85, pitch: 0.98 }
   },
   {
     id: 'angry',
@@ -53,7 +54,7 @@ const EMOTIONS = [
     activeBgClass: 'bg-accent-red/10 border-accent-red/50 text-accent-red glow-red',
     accentColor: '#ef4444',
     description: 'Fast, sharp voice. Flat mouth, red illumination.',
-    voiceParams: { speed: 1.25, pitch: 0.80 }
+    voiceParams: { speed: 1.20, pitch: 1.05 }
   },
   {
     id: 'surprised',
@@ -83,7 +84,7 @@ const EMOTIONS = [
     activeBgClass: 'bg-accent-orange/10 border-accent-orange/50 text-accent-orange glow-orange',
     accentColor: '#f97316',
     description: 'Caring, moderate speed. Empathetic tilt, orange glow.',
-    voiceParams: { speed: 0.85, pitch: 0.90 }
+    voiceParams: { speed: 0.88, pitch: 1.02 }
   },
   {
     id: 'encouraging',
@@ -103,7 +104,7 @@ const EMOTIONS = [
     activeBgClass: 'bg-accent-emerald/10 border-accent-emerald/50 text-accent-emerald glow-emerald',
     accentColor: '#34d399',
     description: 'Kind, steady cadence. Broad curve, soft green glow.',
-    voiceParams: { speed: 0.90, pitch: 1.00 }
+    voiceParams: { speed: 0.90, pitch: 1.02 }
   },
   {
     id: 'thinking',
@@ -113,7 +114,7 @@ const EMOTIONS = [
     activeBgClass: 'bg-accent-amber/10 border-accent-amber/50 text-accent-amber glow-amber',
     accentColor: '#eab308',
     description: 'Slow, hesitant pace. Wavy mouth curve, yellow lights.',
-    voiceParams: { speed: 0.80, pitch: 0.92 }
+    voiceParams: { speed: 0.85, pitch: 1.00 }
   },
   {
     id: 'fearful',
@@ -123,7 +124,7 @@ const EMOTIONS = [
     activeBgClass: 'bg-accent-purple/10 border-accent-purple/50 text-accent-purple glow-purple',
     accentColor: '#a78bfa',
     description: 'Fast, trembling speed. Tremulous smile and purple aura.',
-    voiceParams: { speed: 1.20, pitch: 0.85 }
+    voiceParams: { speed: 1.15, pitch: 1.05 }
   }
 ];
 
@@ -198,8 +199,12 @@ export default function EmotionPlayground() {
     return new Promise((resolve) => {
       if (!window.speechSynthesis) return resolve();
       const utterance = new SpeechSynthesisUtterance(phrase);
+      const femaleVoice = getFemaleVoice();
+      if (femaleVoice) {
+        utterance.voice = femaleVoice;
+      }
       utterance.rate = speed;
-      utterance.pitch = pitch;
+      utterance.pitch = Math.max(1.0, pitch);
       utterance.volume = 1.0;
       utterance.onend = () => resolve(true);
       utterance.onerror = () => resolve(false);

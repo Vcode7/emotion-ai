@@ -32,6 +32,17 @@ export default function MessageBubble({ message, isLatest = false }) {
         {/* ── User message ── */}
         {isUser && (
           <div>
+            {message.userEmotion && (
+              <div className="mb-2 flex justify-end">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-white/10 text-white/90 border border-white/15 backdrop-blur-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse" />
+                  User Emotion: <strong className="font-semibold text-white">{message.userEmotion}</strong>
+                  {message.userEmotionScore != null && message.userEmotionScore > 0 && (
+                    <span className="opacity-65 text-[10px]">({Math.round(message.userEmotionScore * 100)}%)</span>
+                  )}
+                </span>
+              </div>
+            )}
             <p className="text-sm leading-relaxed whitespace-pre-wrap">
               {message.content}
             </p>

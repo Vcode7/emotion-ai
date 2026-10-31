@@ -48,7 +48,7 @@ function SceneBackground() {
       {/* Background plane with gradient */}
       <mesh position={[0, 0, -3]} scale={[12, 12, 1]}>
         <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial color="#000000ff" />
+        <meshBasicMaterial color="#000000" />
       </mesh>
 
       {/* Floor grid effect */}

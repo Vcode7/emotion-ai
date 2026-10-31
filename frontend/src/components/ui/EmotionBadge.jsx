@@ -1,3 +1,5 @@
+import { normalizeEmotion } from '../../utils/emotionLabels';
+
 const EMOTION_CONFIG = {
   neutral: {
     color: '#94a3b8',
@@ -90,8 +92,7 @@ const EMOTION_CONFIG = {
 };
 
 function getEmotionConfig(emotion) {
-  const key = (emotion || 'neutral').toLowerCase();
-  return EMOTION_CONFIG[key] || EMOTION_CONFIG.neutral;
+  return EMOTION_CONFIG[normalizeEmotion(emotion, EMOTION_CONFIG)] || EMOTION_CONFIG.neutral;
 }
 
 export default function EmotionBadge({ emotion }) {

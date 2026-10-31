@@ -41,6 +41,8 @@ export default function ModePanel() {
     videoEnabled,
     outputModes,
     settingsPanelOpen,
+    sttProvider,
+    groqApiKey,
     setLlmProvider,
     setLlmApiKey,
     setInputMode,
@@ -48,6 +50,8 @@ export default function ModePanel() {
     setOutputMode,
     toggleSettingsPanel,
     resetSession,
+    setSttProvider,
+    setGroqApiKey,
   } = useAppStore();
 
   const [showApiKey, setShowApiKey] = useState(false);
@@ -156,6 +160,76 @@ export default function ModePanel() {
                 </button>
               </div>
             </div>
+          </section>
+
+          <Divider />
+
+          {/* ── Speech-to-Text ── */}
+          <section>
+            <SectionLabel icon="🎬" label="Speech-to-Text" />
+            <div className="flex rounded-xl bg-white/[0.03] border border-white/[0.06] p-1 mb-3">
+              <button
+                id="stt-whisper-btn"
+                onClick={() => setSttProvider('whisper')}
+                className={`
+                  flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium
+                  transition-smooth
+                  ${sttProvider === 'whisper'
+                    ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/20'
+                    : 'text-white/40 hover:text-white/60 border border-transparent'
+                  }
+                `}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3" />
+                </svg>
+                Offline Whisper
+              </button>
+              <button
+                id="stt-groq-btn"
+                onClick={() => setSttProvider('groq')}
+                className={`
+                  flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium
+                  transition-smooth
+                  ${sttProvider === 'groq'
+                    ? 'bg-accent-purple/15 text-accent-purple border border-accent-purple/20'
+                    : 'text-white/40 hover:text-white/60 border border-transparent'
+                  }
+                `}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+                </svg>
+                Groq Whisper
+              </button>
+            </div>
+
+            {/* Groq API Key for STT */}
+            {sttProvider === 'groq' && (
+              <div className="space-y-2 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-white/40 font-medium">Groq API Key (STT)</label>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${groqApiKey ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                    <span className="text-[10px] text-white/30">
+                      {groqApiKey ? 'Key Set' : 'Uses server .env key'}
+                    </span>
+                  </div>
+                </div>
+                <input
+                  id="groq-stt-api-key"
+                  type="password"
+                  value={groqApiKey}
+                  onChange={(e) => setGroqApiKey(e.target.value)}
+                  placeholder="gsk_..."
+                  className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white/80 placeholder:text-white/20 focus:border-accent-purple/40 transition-smooth"
+                />
+                <p className="text-[10px] text-white/20 leading-relaxed">
+                  Used exclusively for speech-to-text in Visual Chat.
+                  Falls back to server .env GROQ_API_KEY if left blank.
+                </p>
+              </div>
+            )}
           </section>
 
           <Divider />

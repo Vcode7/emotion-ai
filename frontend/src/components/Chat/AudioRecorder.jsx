@@ -67,11 +67,13 @@ export default function AudioRecorder({ cameraRecorderRef }) {
             response.primary_emotion ||
             'neutral';
 
-          // Update the user message with transcribed text and audio url if available
+          // Update the user message with transcribed text, audio url, and user emotion if available
           const transcribedText = response.transcript || response.transcribed_text || response.user_text;
           updateMessage(userMessageId, {
             content: transcribedText || '🎤 Voice message',
             audioUrl: response.audio_url || null,
+            userEmotion: response.user_emotion || null,
+            userEmotionScore: response.user_emotion_score !== undefined ? response.user_emotion_score : null,
           });
 
           const contentText = Array.isArray(segments) && segments.length > 0
@@ -101,7 +103,25 @@ export default function AudioRecorder({ cameraRecorderRef }) {
             voiceParams,
             timestamp: Date.now(),
           });
+
+          console.log(
+            `%c==================== 🎙️ AUDIO CHAT COMPLETE LOG ====================\n` +
+            `%c[USER SAID]     : %c"${transcribedText || '(Voice Message)'}"\n` +
+            `%c[USER EMOTION]  : %c${response.user_emotion || 'neutral'} (${Math.round((response.user_emotion_score || 0) * 100)}%)\n` +
+            `%c---------------------------------------------------------------\n` +
+            `%c[AI RESPONDED]  : %c"${contentText}"\n` +
+            `%c[AI EMOTION]    : %c${emotion.toUpperCase()}\n` +
+            `%c================================================================`,
+            'color: #38bdf8; font-weight: bold; font-size: 13px;',
+            'color: #93c5fd; font-weight: bold;', 'color: #ffffff;',
+            'color: #86efac; font-weight: bold;', 'color: #ffffff;',
+            'color: #64748b;',
+            'color: #f472b6; font-weight: bold;', 'color: #ffffff;',
+            'color: #fde047; font-weight: bold;', 'color: #fde047; font-weight: bold;',
+            'color: #38bdf8; font-weight: bold;'
+          );
         }
+
       } catch (err) {
         console.error('Audio chat error:', err);
         updateMessage(userMessageId, {

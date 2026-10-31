@@ -71,3 +71,25 @@ backend/uploads/*
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Runtime data (research logs contain user transcripts)
+backend/logs/
+backend/generated/
+backend/static/
+
+# Licensed / unused 3D assets — do not redistribute
+# Tufrilla avatar: license (model/Readme.txt) forbids redistribution; TufrillaAvatar.jsx is unused
+model/TufrillaVRM.vrm
+model/Readme.txt
+model/Readme.png
+# MetaHuman head/hair and FaceCap assets: only used by unused components
+model/face/
+model/model_sky.glb
+backend/models/
+# Only the Sky avatars are loaded at runtime (SkyAvatar.jsx)
+frontend/public/models/*
+!frontend/public/models/sky.glb
+!frontend/public/models/sky2.glb
+# Duplicate copies of the Sky models
+frontend/model/
+frontend/public/model/

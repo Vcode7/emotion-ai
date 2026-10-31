@@ -15,6 +15,7 @@ export default function TextInput({ cameraRecorderRef }) {
     llmProvider,
     llmApiKey,
     addMessage,
+    updateMessage,
     setIsProcessing,
     setCurrentEmotion,
     setCurrentAvatarCommands,
@@ -45,9 +46,11 @@ export default function TextInput({ cameraRecorderRef }) {
     const trimmed = text.trim();
     if (!trimmed || isProcessing) return;
 
+    const userMessageId = uuidv4();
+
     // Add user message
     addMessage({
-      id: uuidv4(),
+      id: userMessageId,
       role: 'user',
       content: trimmed,
       timestamp: Date.now(),
@@ -79,6 +82,12 @@ export default function TextInput({ cameraRecorderRef }) {
 
       // Process response
       if (response) {
+        if (response.user_emotion) {
+          updateMessage(userMessageId, {
+            userEmotion: response.user_emotion,
+            userEmotionScore: response.user_emotion_score,
+          });
+        }
         const segments = response.response || response.segments || [];
         const avatarCommands = response.avatar_commands || null;
         const voiceParams = response.voice_params || null;
@@ -118,6 +127,23 @@ export default function TextInput({ cameraRecorderRef }) {
           voiceParams,
           timestamp: Date.now(),
         });
+
+        console.log(
+          `%c==================== 💬 CHAT COMPLETE LOG ====================\n` +
+          `%c[USER SAID]     : %c"${trimmed}"\n` +
+          `%c[USER EMOTION]  : %c${response.user_emotion || 'neutral'} (${Math.round((response.user_emotion_score || 0) * 100)}%)\n` +
+          `%c---------------------------------------------------------------\n` +
+          `%c[AI RESPONDED]  : %c"${contentText}"\n` +
+          `%c[AI EMOTION]    : %c${emotion.toUpperCase()}\n` +
+          `%c================================================================`,
+          'color: #38bdf8; font-weight: bold; font-size: 13px;',
+          'color: #93c5fd; font-weight: bold;', 'color: #ffffff;',
+          'color: #86efac; font-weight: bold;', 'color: #ffffff;',
+          'color: #64748b;',
+          'color: #f472b6; font-weight: bold;', 'color: #ffffff;',
+          'color: #fde047; font-weight: bold;', 'color: #fde047; font-weight: bold;',
+          'color: #38bdf8; font-weight: bold;'
+        );
       }
     } catch (err) {
       console.error('Chat error:', err);
@@ -140,6 +166,7 @@ export default function TextInput({ cameraRecorderRef }) {
     llmProvider,
     llmApiKey,
     addMessage,
+    updateMessage,
     setIsProcessing,
     setCurrentEmotion,
     setCurrentAvatarCommands,

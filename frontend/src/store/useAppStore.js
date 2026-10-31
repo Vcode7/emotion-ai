@@ -12,6 +12,20 @@ const getSavedMessages = () => {
   }
 };
 
+// Keep the session id across reloads so it matches the persisted chat history
+// (the backend keeps conversation memory per session id).
+const getSavedSessionId = () => {
+  try {
+    const saved = localStorage.getItem('session_id');
+    if (saved) return saved;
+    const fresh = uuidv4();
+    localStorage.setItem('session_id', fresh);
+    return fresh;
+  } catch {
+    return uuidv4();
+  }
+};
+
 const useAppStore = create((set, get) => ({
   /* ── Input / Output Mode ── */
   inputMode: 'text', // 'text' | 'audio'
@@ -45,16 +59,38 @@ const useAppStore = create((set, get) => ({
   /* ── Emotion / Avatar ── */
   currentEmotion: 'neutral',
   currentAvatarCommands: null,
+  selectedAvatar: (() => {
+    try {
+      const saved = localStorage.getItem('selected_avatar');
+      return saved === 'sky2' ? 'sky2' : 'sky';
+    } catch {
+      return 'sky';
+    }
+  })(), // 'sky' | 'sky2'
+
+  /* ── Multimodal Emotion Signals (4-modality, Visual Chat) ── */
+  multimodalEmotions: null,
+  // shape: {
+  //   text:  { emotion, confidence, available }
+  //   audio: { emotion, confidence, available }
+  //   face:  { emotion, confidence, available, face_detected }
+  //   dsmr:  { emotion, confidence }
+  // }
 
   /* ── Session ── */
-  sessionId: uuidv4(),
+  sessionId: getSavedSessionId(),
 
   /* ── LLM Configuration ── */
   llmProvider: 'groq',
   llmApiKey: '',
 
+  /* ── STT Configuration ── */
+  sttProvider: localStorage.getItem('stt_provider') || 'groq', // 'groq' (default) | 'whisper'
+  groqApiKey: localStorage.getItem('groq_api_key') || '',
+
   /* ── UI State ── */
   settingsPanelOpen: false,
+  isVisualChatActive: false,
 
   /* ── Actions ── */
   setInputMode: (mode) =>
@@ -78,6 +114,8 @@ const useAppStore = create((set, get) => ({
           content: msg.content || '',
           audioUrl: msg.audioUrl || null,
           emotion: msg.emotion || 'neutral',
+          userEmotion: msg.userEmotion || null,
+          userEmotionScore: msg.userEmotionScore !== undefined ? msg.userEmotionScore : null,
           emotionState: msg.emotionState || null,
           segments: msg.segments || null,
           avatarCommands: msg.avatarCommands || null,
@@ -113,20 +151,47 @@ const useAppStore = create((set, get) => ({
   setCurrentAvatarCommands: (cmds) =>
     set({ currentAvatarCommands: cmds }),
 
+  setSelectedAvatar: (avatar) => {
+    const valid = avatar === 'sky2' ? 'sky2' : 'sky';
+    try {
+      localStorage.setItem('selected_avatar', valid);
+    } catch {}
+    set({ selectedAvatar: valid });
+  },
+
+  setMultimodalEmotions: (emotions) =>
+    set({ multimodalEmotions: emotions }),
+
   setLlmProvider: (provider) =>
     set({ llmProvider: provider }),
 
   setLlmApiKey: (key) =>
     set({ llmApiKey: key }),
 
+  setSttProvider: (provider) => {
+    localStorage.setItem('stt_provider', provider);
+    set({ sttProvider: provider });
+  },
+
+  setGroqApiKey: (key) => {
+    localStorage.setItem('groq_api_key', key);
+    set({ groqApiKey: key });
+  },
+
+  setVisualChatActive: (active) =>
+    set({ isVisualChatActive: active }),
+
   toggleSettingsPanel: () =>
     set((state) => ({ settingsPanelOpen: !state.settingsPanelOpen })),
 
   resetSession: () => {
     localStorage.removeItem('chat_messages');
+    const sessionId = uuidv4();
+    try { localStorage.setItem('session_id', sessionId); } catch {}
     set({
       messages: [],
-      sessionId: uuidv4(),
+      sessionId,
+      multimodalEmotions: null,
       currentEmotion: 'neutral',
       currentAvatarCommands: null,
       isRecording: false,

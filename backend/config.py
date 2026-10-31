@@ -8,6 +8,7 @@ module imports from a single source of truth.
 
 import os
 from pathlib import Path
+from typing import List, Optional
 
 import torch
 
@@ -53,8 +54,34 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 GROQ_API_KEY: str = os.environ.get("GROQ_API_KEY", "")
+GROQ_API_KEY_FALLBACK1: str = os.environ.get("GROQ_API_KEY_FALLBACK1", "")
+GROQ_API_KEY_FALLBACK2: str = os.environ.get("GROQ_API_KEY_FALLBACK2", "")
 OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
+
+
+def get_groq_api_keys(primary_override: Optional[str] = None) -> List[str]:
+    """
+    Returns an ordered list of unique, non-empty Groq API keys:
+    1. primary_override (if provided and valid)
+    2. GROQ_API_KEY
+    3. GROQ_API_KEY_FALLBACK1
+    4. GROQ_API_KEY_FALLBACK2
+    """
+    candidates = [
+        primary_override or "",
+        os.environ.get("GROQ_API_KEY", ""),
+        os.environ.get("GROQ_API_KEY_FALLBACK1", ""),
+        os.environ.get("GROQ_API_KEY_FALLBACK2", ""),
+    ]
+    keys: List[str] = []
+    for k in candidates:
+        if k:
+            k = k.strip()
+            if k and k not in keys:
+                keys.append(k)
+    return keys
+
 
 UPLOAD_DIR: Path = BACKEND_DIR / "uploads"
 """Root directory for temporary user uploads (audio, video)."""

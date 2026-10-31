@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import useAppStore from '../../store/useAppStore';
+import { normalizeEmotion } from '../../utils/emotionLabels';
 
 /* ─── Emotion Color Map ─── */
 const EMOTION_COLORS = {
@@ -290,7 +291,9 @@ function Arm({ position, side, time }) {
 }
 
 /* ─── Main Robot Avatar ─── */
-export default function RobotAvatar({ emotion = 'neutral', avatarCommands = null }) {
+export default function RobotAvatar({ emotion: rawEmotion = 'neutral', avatarCommands = null }) {
+  // Normalise backend labels (joyful, empathetic, Content, …) to the ones drawn here.
+  const emotion = normalizeEmotion(rawEmotion, EMOTION_COLORS);
   const isSpeaking = useAppStore((s) => s.isSpeaking);
   const groupRef = useRef();
   const headRef = useRef();

@@ -288,3 +288,37 @@ textarea:focus {
 input:focus {
   outline: none;
 }
+
+/* ─── Loading Bar Animations ─── */
+@keyframes loading-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(25%);
+  }
+  100% {
+    transform: translateX(150%);
+  }
+}
+
+@keyframes gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-loading-sweep {
+  animation: loading-sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-gradient-flow {
+  background-size: 200% 200%;
+  animation: gradient-flow 2.4s ease infinite;
+}
